@@ -71,9 +71,46 @@ void safeShutdown(zhandle_t *zzh)
 	}
 }
 
+
+static const char* state2String(int state)
+{
+	if (state == 0)
+		return "CLOSED_STATE";
+	if (state == ZOO_CONNECTING_STATE)
+		return "CONNECTING_STATE";
+	if (state == ZOO_ASSOCIATING_STATE)
+		return "ASSOCIATING_STATE";
+	if (state == ZOO_CONNECTED_STATE)
+		return "CONNECTED_STATE";
+	if (state == ZOO_EXPIRED_SESSION_STATE)
+		return "EXPIRED_SESSION_STATE";
+	if (state == ZOO_AUTH_FAILED_STATE)
+		return "AUTH_FAILED_STATE";
+
+	return "INVALID_STATE";
+}
+
+static const char* type2String(int type)
+{
+	if (type == ZOO_CREATED_EVENT)
+		return "CREATED_EVENT";
+	if (type == ZOO_DELETED_EVENT)
+		return "DELETED_EVENT";
+	if (type == ZOO_CHANGED_EVENT)
+		return "CHANGED_EVENT";
+	if (type == ZOO_CHILD_EVENT)
+		return "CHILD_EVENT";
+	if (type == ZOO_SESSION_EVENT)
+		return "SESSION_EVENT";
+	if (type == ZOO_NOTWATCHING_EVENT)
+		return "NOTWATCHING_EVENT";
+
+	return "UNKNOWN_EVENT_TYPE";
+}
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx)
 {
+	cout << "New event incoming: " << type2String(type) << " " << state2String(state) << " " << path << endl;
 	if (type == ZOO_SESSION_EVENT)
 	{
 		if (state == ZOO_CONNECTED_STATE)
@@ -95,47 +132,42 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 
 			std::cout<<responseCode<<std::endl;
 			session_id = zoo_client_id(zzh);
+			return;
 		}
-		else
+		else if (state == ZOO_AUTH_FAILED_STATE)
 		{
-			std::cout<<"change detected!"<<std::endl;
+			cout << "Refused connection " << std::endl;
+			safeShutdown(zzh);
+		}
+		else if (state == ZOO_EXPIRED_SESSION_STATE)
+		{
+			cout << "session expired attempting to re-connect" << std::endl;
+			zk = zookeeper_init("localhost:2181", watcher, timeout, session_id, NULL,
+					0);
 		}
 	}
-	if (state == ZOO_AUTH_FAILED_STATE)
-	{
-		cout << "Refused connection WATCHER RESPONDED " << std::endl;
-		;
-		safeShutdown(zzh);
-	}
-	else if (state == ZOO_EXPIRED_SESSION_STATE)
-	{
-		cout << "session expired attempting to re-connect" << std::endl;
-		zk = zookeeper_init("localhost:2181", watcher, timeout, session_id, NULL,
-				0);
-	}
-	else if (state == ZOO_DELETED_EVENT)
+	else if (type == ZOO_DELETED_EVENT)
 	{
 		cout << "node delete detected" << std::endl;
 	}
-	else if (state == ZOO_CHILD_EVENT)
+	else if (type == ZOO_CHILD_EVENT)
 	{
-		zoo_get_children(zk, path, true, NULL);
-		cout << "child change detected" << std::endl;
-	}
-	else if (state == ZOO_CHANGED_EVENT)
-	{
-		responseCode = zoo_exists(zk, path, true, NULL);
-		std::cout<<"£"<<std::endl;
+		//zoo_get_children(zk, path, true, NULL);
+		cout << "child change detected!!" << std::endl;
 		responseCode = zoo_get_children(zk, path, true, list_of_children);
-		std::cout<<"£"<<std::endl;
 		if(list_of_children)
 		{
 			for (int i = 0; i < list_of_children->count; i++)
 			{
 				std::cout<<list_of_children->count<<std::endl;
-				responseCode = zoo_exists(zk, path + '/' + *list_of_children->data[i] , true, NULL);
+				responseCode = zoo_get_children(zk, path + '/' + *list_of_children->data[i] , true, NULL);
 			}
 		}
+	}
+	else if (type == ZOO_CHANGED_EVENT)
+	{
+		responseCode = zoo_exists(zk, path, true, NULL);
+		std::cout<<state<<std::endl;
 		cout << "change detected" << std::endl;
 	}
 }
