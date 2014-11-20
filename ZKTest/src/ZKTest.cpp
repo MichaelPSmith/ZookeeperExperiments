@@ -18,6 +18,7 @@ using namespace std;
 
 static zhandle_t *zk;
 static const clientid_t *session_id;
+struct String_vector *list_of_children;
 int timeout = 3000;
 int responseCode = 0;
 
@@ -46,7 +47,6 @@ int main(int argc, char **argv)
 	}
 	std::cout << "authentication step done" << std::endl;
 
-	//responseCode = zoo_create(zk, "/test","my_data",7, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, NULL);
 	while (zk)
 	{
 
@@ -117,14 +117,25 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 	{
 		cout << "node delete detected" << std::endl;
 	}
-	else if (state == ZOO_CHANGED_EVENT)
-	{
-		responseCode = zoo_exists(zk, path, true, NULL);
-		cout << "change detected" << std::endl;
-	}
 	else if (state == ZOO_CHILD_EVENT)
 	{
 		zoo_get_children(zk, path, true, NULL);
 		cout << "child change detected" << std::endl;
+	}
+	else if (state == ZOO_CHANGED_EVENT)
+	{
+		responseCode = zoo_exists(zk, path, true, NULL);
+		std::cout<<"£"<<std::endl;
+		responseCode = zoo_get_children(zk, path, true, list_of_children);
+		std::cout<<"£"<<std::endl;
+		if(list_of_children)
+		{
+			for (int i = 0; i < list_of_children->count; i++)
+			{
+				std::cout<<list_of_children->count<<std::endl;
+				responseCode = zoo_exists(zk, path + '/' + *list_of_children->data[i] , true, NULL);
+			}
+		}
+		cout << "change detected" << std::endl;
 	}
 }
