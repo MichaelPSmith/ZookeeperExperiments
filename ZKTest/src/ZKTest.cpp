@@ -10,6 +10,7 @@
 #include <thread>
 #include <mutex>
 #include <string.h>
+#include <sstream>
 #include <errno.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -20,23 +21,64 @@ using namespace std;
 
 static zhandle_t *zk;
 static const clientid_t *session_id;
+char* nodeType = "default";
 struct String_vector list_of_children = {0};
 int timeout = 3000;
 int responseCode = 0;
 std::mutex mutex_lock;
 
 void safeShutdown(zhandle_t *zzh);
+void configure();
+void configurationwatcher(zhandle_t *zzh, int type, int state, const char *path,
+		void *watcherCtx);
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx);
 void discoverChildren(const char* path);
 
 int main(int argc, char **argv)
 {
+	/*
+	 * checking to see if the host entered as the second argument is valid
+	 * if no host is entered the program will default to local host
+	 */
+	char* hosts;
+	char* check = "localhost";
+	char* check2 = ":";
+	if(argc >1)
+	{
+		for (int i = 1; i < argc-1; i++ )
+		{
+			if(isdigit(argv[i][0]))
+			{
+				if(strstr(argv[i],check2) != NULL)
+				{
+					hosts = argv[i];
+				}
+			}
+			else if(strstr(argv[i],check) !=NULL)
+			{
+				if(strstr(argv[i],check2) != NULL)
+				{
+					hosts = argv[1];
+				}
+
+			}
+			else if(isalpha(argv[i][0]))
+			{
+				nodeType = argv[i];
+			}
+		}
+	}
+	else
+	{
+		hosts = "localhost:2181";
+	}
+
 	session_id = NULL;
 	char* p;
 	cout << "Initialising Zookeeper" << endl; // prints !!!Hello World!!!
 
-	zk = zookeeper_init("localhost:2181", watcher, timeout, session_id, NULL, 0);
+	zk = zookeeper_init(hosts, watcher, timeout, session_id, NULL, 0);
 	while (!zk)
 	{
 
@@ -69,11 +111,9 @@ int main(int argc, char **argv)
 
 	safeShutdown(zk);
 	return 0;
-}
+}// End of Main
 
-///////////////////////////////////////////////////////////////////////
-///                        END OF MAIN                              ///
-///////////////////////////////////////////////////////////////////////
+
 
 void safeShutdown(zhandle_t *zzh)
 {
@@ -133,18 +173,28 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 			std::cout<<state2String(type)<<std::endl;
 			zoo_create(zk, "/test","my_data",7, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 			zoo_create(zk, "/childTest","my_data",7, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
-			zoo_exists(zk, "/test", true, NULL);
+
 			/*zoo_exists tests if a node exists, and if the 3rd argument is non 0 sets a watch
 			 * that watch is triggered upon any change to the file specified in arg 2
 			 * argument 1 is the zookeeper session to make the request too
 			 * */
-
+			zoo_exists(zk, "/test", true, NULL);
+			stringstream ss;
+			string temp;
+			ss << nodeType;
+			ss >> temp;
+			string addition_of_strings = "/configTest/" + temp;
+			const char* node_to_watch = addition_of_strings.c_str();
+			std::cout<<"setting watch for config type of "<<node_to_watch<<std::endl;
+			if(zoo_wexists(zk, node_to_watch ,configurationwatcher, NULL , NULL)==0)
+			{
+				char config_data[1024] = {0};
+				int data_length = sizeof(config_data);
+				zoo_get(zk, node_to_watch, true, config_data, &data_length, NULL);
+				std::cout<<"i am a client of type "<<config_data<<std::endl<<"and this data is "<<data_length<<" chars long"<<endl;
+			}
 			responseCode = zoo_get_children(zk, "/childTest", true, NULL);
 			discoverChildren("/childTest");
-			/*
-			 * as zoo_exists but watches children of the specified node.
-			 * argument 4 is a string that can be used to return the path of child nodes.
-			 */
 			session_id = zoo_client_id(zzh);
 			return;
 		}
@@ -201,4 +251,13 @@ void discoverChildren(const char* path)
 		}
 		deallocate_String_vector(&list_of_children_discovered);
 	}
+}
+void configurationwatcher(zhandle_t *zzh, int type, int state, const char *path,
+		void *watchContext)
+{
+	char config_data[1024] = {0};
+	int data_length = sizeof(config_data);
+	zoo_get(zk, path, true, config_data, &data_length, NULL);
+	std::cout<<"i am a client of type "<<config_data<<std::endl<<"and this data is "<<data_length<<" chars long"<<endl;
+	zoo_wexists(zk, path, configurationwatcher, NULL , NULL);
 }
