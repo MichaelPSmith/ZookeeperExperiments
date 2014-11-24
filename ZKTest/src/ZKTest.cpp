@@ -7,6 +7,8 @@
 //============================================================================
 
 #include <iostream>
+#include <thread>
+#include <mutex>
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -18,13 +20,15 @@ using namespace std;
 
 static zhandle_t *zk;
 static const clientid_t *session_id;
-struct String_vector *list_of_children;
+struct String_vector list_of_children = {0};
 int timeout = 3000;
 int responseCode = 0;
+std::mutex mutex_lock;
 
 void safeShutdown(zhandle_t *zzh);
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx);
+void discoverChildren(const char* path);
 
 int main(int argc, char **argv)
 {
@@ -49,10 +53,20 @@ int main(int argc, char **argv)
 
 	while (zk)
 	{
+		/*
+		 * mutex used to make the main program loop wait until there is feedback
+		 * from zookeeper. initially locks, then loops around. thread cannot lock
+		 * again until the current lock has been unlocked.
+		 */
+		mutex_lock.lock();
 
+		/*
+		 * debug test to show that the loop does not continue until watcher
+		 *  is called
+		 */
+		std::cout<<"loop locked"<<std::endl;
 	}
 
-	std::cout<<"why are we here?"<<std::endl;
 	safeShutdown(zk);
 	return 0;
 }
@@ -110,12 +124,13 @@ static const char* type2String(int type)
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx)
 {
-	cout << "New event incoming: " << type2String(type) << " " << state2String(state) << " " << path << endl;
+	mutex_lock.unlock();
 	if (type == ZOO_SESSION_EVENT)
 	{
+		std::cout<<type2String(type)<<std::endl;
 		if (state == ZOO_CONNECTED_STATE)
 		{
-			cout << "session Connected" << std::endl;
+			std::cout<<state2String(type)<<std::endl;
 			zoo_create(zk, "/test","my_data",7, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
 			zoo_create(zk, "/childTest","my_data",7, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 			zoo_exists(zk, "/test", true, NULL);
@@ -125,49 +140,65 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 			 * */
 
 			responseCode = zoo_get_children(zk, "/childTest", true, NULL);
+			discoverChildren("/childTest");
 			/*
 			 * as zoo_exists but watches children of the specified node.
 			 * argument 4 is a string that can be used to return the path of child nodes.
 			 */
-
-			std::cout<<responseCode<<std::endl;
 			session_id = zoo_client_id(zzh);
 			return;
 		}
 		else if (state == ZOO_AUTH_FAILED_STATE)
 		{
-			cout << "Refused connection " << std::endl;
+			std::cout<<state2String(type)<<std::endl;
 			safeShutdown(zzh);
 		}
 		else if (state == ZOO_EXPIRED_SESSION_STATE)
 		{
-			cout << "session expired attempting to re-connect" << std::endl;
+			std::cout<<state2String(type)<<std::endl;
 			zk = zookeeper_init("localhost:2181", watcher, timeout, session_id, NULL,
 					0);
 		}
 	}
 	else if (type == ZOO_DELETED_EVENT)
 	{
-		cout << "node delete detected" << std::endl;
+		std::cout<<type2String(type)<<std::endl;
+		zoo_exists(zk, path, true, NULL);
 	}
 	else if (type == ZOO_CHILD_EVENT)
 	{
-		//zoo_get_children(zk, path, true, NULL);
-		cout << "child change detected!!" << std::endl;
-		responseCode = zoo_get_children(zk, path, true, list_of_children);
-		if(list_of_children)
-		{
-			for (int i = 0; i < list_of_children->count; i++)
-			{
-				std::cout<<list_of_children->count<<std::endl;
-				responseCode = zoo_get_children(zk, path + '/' + *list_of_children->data[i] , true, NULL);
-			}
-		}
+		std::cout<<type2String(type)<<std::endl;
+		discoverChildren(path);
 	}
 	else if (type == ZOO_CHANGED_EVENT)
 	{
 		responseCode = zoo_exists(zk, path, true, NULL);
-		std::cout<<state<<std::endl;
-		cout << "change detected" << std::endl;
+		std::cout<<type2String(type)<<std::endl;
+	}
+	else if (type == ZOO_CREATED_EVENT)
+	{
+		responseCode = zoo_exists(zk, path, true, NULL);
+		std::cout<<type2String(type)<<std::endl;
+		cout << "creation of watched node detected" << std::endl;
+	}
+}
+
+void discoverChildren(const char* path)
+{
+	struct String_vector list_of_children_discovered = {0};
+	cout << "discovering children"<<path<< std::endl;
+	zoo_get_children(zk, path, true, &list_of_children_discovered);
+	zoo_exists(zk, path, true, NULL);
+	if(list_of_children_discovered.count)
+	{
+		for (int i = 0; i < list_of_children_discovered.count; i++)
+		{
+			string child_to_add = path;
+			child_to_add += '/';
+			child_to_add += list_of_children_discovered.data[i];
+			const char* end_result = child_to_add.c_str();
+			discoverChildren(end_result);
+		}
+		deallocate_String_vector(&list_of_children_discovered);
 	}
 }
