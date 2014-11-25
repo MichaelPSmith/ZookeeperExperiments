@@ -7,7 +7,10 @@
 //============================================================================
 
 #include <iostream>
+#include <cstring>
+#include <algorithm>
 #include <thread>
+#include <vector>
 #include <mutex>
 #include <string.h>
 #include <sstream>
@@ -26,9 +29,9 @@ struct String_vector list_of_children = {0};
 int timeout = 3000;
 int responseCode = 0;
 std::mutex mutex_lock;
-
 void safeShutdown(zhandle_t *zzh);
 void configure();
+void setConfiguration(char* configString);
 void configurationwatcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx);
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
@@ -41,12 +44,12 @@ int main(int argc, char **argv)
 	 * checking to see if the host entered as the second argument is valid
 	 * if no host is entered the program will default to local host
 	 */
-	char* hosts;
+	char* hosts = "localhost:2181";
 	char* check = "localhost";
 	char* check2 = ":";
 	if(argc >1)
 	{
-		for (int i = 1; i < argc-1; i++ )
+		for (int i = 1; i < argc; i++ )
 		{
 			if(isdigit(argv[i][0]))
 			{
@@ -171,30 +174,36 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		if (state == ZOO_CONNECTED_STATE)
 		{
 			std::cout<<state2String(type)<<std::endl;
+			/*
+			 * create a temporary zookeeper node that will vanish when this client disconnects,
+			 *  useful for testing.
+			 */
 			zoo_create(zk, "/test","my_data",7, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
-			zoo_create(zk, "/childTest","my_data",7, &ZOO_OPEN_ACL_UNSAFE, 0, NULL, 0);
 
-			/*zoo_exists tests if a node exists, and if the 3rd argument is non 0 sets a watch
-			 * that watch is triggered upon any change to the file specified in arg 2
-			 * argument 1 is the zookeeper session to make the request too
-			 * */
-			zoo_exists(zk, "/test", true, NULL);
+			/*
+			 * Setting configuration to watch. taking the char[] provided by argv and appending it to a
+			 * string containing configuration root directory before turning back into a char[] with
+			 * the c_str() function to allow zookeeper to read the full address to watch
+			 */
 			stringstream ss;
 			string temp;
 			ss << nodeType;
 			ss >> temp;
 			string addition_of_strings = "/configTest/" + temp;
-			const char* node_to_watch = addition_of_strings.c_str();
-			std::cout<<"setting watch for config type of "<<node_to_watch<<std::endl;
-			if(zoo_wexists(zk, node_to_watch ,configurationwatcher, NULL , NULL)==0)
+			const char* config_to_watch = addition_of_strings.c_str();
+			std::cout<<"setting watch for config type of "<<config_to_watch<<std::endl;
+
+			if(zoo_wexists(zk, config_to_watch ,configurationwatcher, NULL , NULL)==0)
 			{
 				char config_data[1024] = {0};
 				int data_length = sizeof(config_data);
-				zoo_get(zk, node_to_watch, true, config_data, &data_length, NULL);
-				std::cout<<"i am a client of type "<<config_data<<std::endl<<"and this data is "<<data_length<<" chars long"<<endl;
+				zoo_get(zk, config_to_watch, true, config_data, &data_length, NULL);
+				setConfiguration(config_data);
 			}
-			responseCode = zoo_get_children(zk, "/childTest", true, NULL);
-			discoverChildren("/childTest");
+
+
+			//responseCode = zoo_get_children(zk, "/childTest", true, NULL);
+			//discoverChildren("/childTest");
 			session_id = zoo_client_id(zzh);
 			return;
 		}
@@ -236,7 +245,7 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 void discoverChildren(const char* path)
 {
 	struct String_vector list_of_children_discovered = {0};
-	cout << "discovering children"<<path<< std::endl;
+	cout << "discovering children of "<<path<< std::endl;
 	zoo_get_children(zk, path, true, &list_of_children_discovered);
 	zoo_exists(zk, path, true, NULL);
 	if(list_of_children_discovered.count)
@@ -252,12 +261,44 @@ void discoverChildren(const char* path)
 		deallocate_String_vector(&list_of_children_discovered);
 	}
 }
+
 void configurationwatcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watchContext)
 {
-	char config_data[1024] = {0};
+	char config_data[1049000] = {0};
 	int data_length = sizeof(config_data);
 	zoo_get(zk, path, true, config_data, &data_length, NULL);
-	std::cout<<"i am a client of type "<<config_data<<std::endl<<"and this data is "<<data_length<<" chars long"<<endl;
+	std::cout<<"i am a client of type "<<config_data<<std::endl;
+	setConfiguration(config_data);
 	zoo_wexists(zk, path, configurationwatcher, NULL , NULL);
+}
+
+void setConfiguration(char* configString)
+{
+	vector<char*> elements;
+	uint configBegin = 0;
+	for (uint it = 0; it != strlen(configString); it++ )
+	{
+		if(configString[it] == ';' || NULL)
+		{
+			string tempString;
+			while(configBegin != it)
+			{
+				tempString += configString[configBegin];
+				configBegin++;
+			}
+			configBegin = it+1;
+			char* element = new char[tempString.length()+1];
+			std::strcpy (element, tempString.c_str());
+			elements.push_back(element);
+		}
+	}
+	std::cout<<"i am a client of type "<<nodeType<<std::endl;
+	std::cout<<"and i should watch the nodes:"<<std::endl;
+	for (uint it = 0; it != elements.size(); it++)
+	{
+		std::cout<<elements[it]<<std::endl;
+		zoo_exists(zk, elements[it], true, NULL);
+		discoverChildren(elements[it]);
+	}
 }
