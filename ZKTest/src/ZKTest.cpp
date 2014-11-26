@@ -25,7 +25,7 @@ using namespace std;
 static zhandle_t *zk;
 static const clientid_t *session_id;
 char* nodeType = "default";
-struct String_vector list_of_children = {0};
+struct String_vector list_of_children = { 0 };
 int timeout = 3000;
 int responseCode = 0;
 std::mutex mutex_lock;
@@ -47,26 +47,26 @@ int main(int argc, char **argv)
 	char* hosts = "localhost:2181";
 	char* check = "localhost";
 	char* check2 = ":";
-	if(argc >1)
+	if (argc > 1)
 	{
-		for (int i = 1; i < argc; i++ )
+		for (int i = 1; i < argc; i++)
 		{
-			if(isdigit(argv[i][0]))
+			if (isdigit(argv[i][0]))
 			{
-				if(strstr(argv[i],check2) != NULL)
+				if (strstr(argv[i], check2) != NULL)
 				{
 					hosts = argv[i];
 				}
 			}
-			else if(strstr(argv[i],check) !=NULL)
+			else if (strstr(argv[i], check) != NULL)
 			{
-				if(strstr(argv[i],check2) != NULL)
+				if (strstr(argv[i], check2) != NULL)
 				{
 					hosts = argv[1];
 				}
 
 			}
-			else if(isalpha(argv[i][0]))
+			else if (isalpha(argv[i][0]))
 			{
 				nodeType = argv[i];
 			}
@@ -109,14 +109,12 @@ int main(int argc, char **argv)
 		 * debug test to show that the loop does not continue until watcher
 		 *  is called
 		 */
-		std::cout<<"loop locked"<<std::endl;
+		std::cout << "loop locked" << std::endl;
 	}
 
 	safeShutdown(zk);
 	return 0;
-}// End of Main
-
-
+} // End of Main
 
 void safeShutdown(zhandle_t *zzh)
 {
@@ -127,7 +125,6 @@ void safeShutdown(zhandle_t *zzh)
 		zk = 0;
 	}
 }
-
 
 static const char* state2String(int state)
 {
@@ -170,15 +167,16 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 	mutex_lock.unlock();
 	if (type == ZOO_SESSION_EVENT)
 	{
-		std::cout<<type2String(type)<<std::endl;
+		std::cout << type2String(type) << std::endl;
 		if (state == ZOO_CONNECTED_STATE)
 		{
-			std::cout<<state2String(type)<<std::endl;
+			std::cout << state2String(type) << std::endl;
 			/*
 			 * create a temporary zookeeper node that will vanish when this client disconnects,
 			 *  useful for testing.
 			 */
-			zoo_create(zk, "/test","my_data",7, &ZOO_OPEN_ACL_UNSAFE, ZOO_EPHEMERAL, NULL, 0);
+			zoo_create(zk, "/test", "my_data", 7, &ZOO_READ_ACL_UNSAFE,
+					ZOO_EPHEMERAL, NULL, 0);
 
 			/*
 			 * Setting configuration to watch. taking the char[] provided by argv and appending it to a
@@ -191,64 +189,64 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 			ss >> temp;
 			string addition_of_strings = "/configTest/" + temp;
 			const char* config_to_watch = addition_of_strings.c_str();
-			std::cout<<"setting watch for config type of "<<config_to_watch<<std::endl;
+			std::cout << "setting watch for config type of " << config_to_watch
+					<< std::endl;
 
-			if(zoo_wexists(zk, config_to_watch ,configurationwatcher, NULL , NULL)==0)
+			if (zoo_wexists(zk, config_to_watch, configurationwatcher, NULL, NULL)
+					== 0)
 			{
-				char config_data[1024] = {0};
+				char config_data[1024] =
+				{ 0 };
 				int data_length = sizeof(config_data);
 				zoo_get(zk, config_to_watch, true, config_data, &data_length, NULL);
 				setConfiguration(config_data);
 			}
 
-
-			//responseCode = zoo_get_children(zk, "/childTest", true, NULL);
-			//discoverChildren("/childTest");
 			session_id = zoo_client_id(zzh);
 			return;
 		}
 		else if (state == ZOO_AUTH_FAILED_STATE)
 		{
-			std::cout<<state2String(type)<<std::endl;
+			std::cout << state2String(type) << std::endl;
 			safeShutdown(zzh);
 		}
 		else if (state == ZOO_EXPIRED_SESSION_STATE)
 		{
-			std::cout<<state2String(type)<<std::endl;
-			zk = zookeeper_init("localhost:2181", watcher, timeout, session_id, NULL,
-					0);
+			std::cout << state2String(type) << std::endl;
+			zk = zookeeper_init("localhost:2181", watcher, timeout, session_id,
+					NULL, 0);
 		}
 	}
 	else if (type == ZOO_DELETED_EVENT)
 	{
-		std::cout<<type2String(type)<<std::endl;
+		std::cout << type2String(type) << std::endl;
 		zoo_exists(zk, path, true, NULL);
 	}
 	else if (type == ZOO_CHILD_EVENT)
 	{
-		std::cout<<type2String(type)<<std::endl;
+		std::cout << type2String(type) << std::endl;
 		discoverChildren(path);
 	}
 	else if (type == ZOO_CHANGED_EVENT)
 	{
 		responseCode = zoo_exists(zk, path, true, NULL);
-		std::cout<<type2String(type)<<std::endl;
+		std::cout << type2String(type) << std::endl;
 	}
 	else if (type == ZOO_CREATED_EVENT)
 	{
 		responseCode = zoo_exists(zk, path, true, NULL);
-		std::cout<<type2String(type)<<std::endl;
+		std::cout << type2String(type) << std::endl;
 		cout << "creation of watched node detected" << std::endl;
 	}
 }
 
 void discoverChildren(const char* path)
 {
-	struct String_vector list_of_children_discovered = {0};
-	cout << "discovering children of "<<path<< std::endl;
+	struct String_vector list_of_children_discovered = { 0 };
+	cout << "discovering children of " << path << std::endl;
 	zoo_get_children(zk, path, true, &list_of_children_discovered);
 	zoo_exists(zk, path, true, NULL);
-	if(list_of_children_discovered.count)
+	if (list_of_children_discovered.count)
 	{
 		for (int i = 0; i < list_of_children_discovered.count; i++)
 		{
@@ -265,39 +263,38 @@ void discoverChildren(const char* path)
 void configurationwatcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watchContext)
 {
-	char config_data[1049000] = {0};
+	char config_data[1049000] =	{ 0 };
 	int data_length = sizeof(config_data);
 	zoo_get(zk, path, true, config_data, &data_length, NULL);
-	std::cout<<"i am a client of type "<<config_data<<std::endl;
 	setConfiguration(config_data);
-	zoo_wexists(zk, path, configurationwatcher, NULL , NULL);
+	zoo_wexists(zk, path, configurationwatcher, NULL, NULL);
 }
 
 void setConfiguration(char* configString)
 {
 	vector<char*> elements;
 	uint configBegin = 0;
-	for (uint it = 0; it != strlen(configString); it++ )
+	for (uint it = 0; it != strlen(configString); it++)
 	{
-		if(configString[it] == ';' || NULL)
+		if (configString[it] == ';')
 		{
 			string tempString;
-			while(configBegin != it)
+			while (configBegin != it)
 			{
 				tempString += configString[configBegin];
 				configBegin++;
 			}
-			configBegin = it+1;
-			char* element = new char[tempString.length()+1];
-			std::strcpy (element, tempString.c_str());
+			configBegin = it + 1;
+			char* element = new char[tempString.length() + 1];
+			std::strcpy(element, tempString.c_str());
 			elements.push_back(element);
 		}
 	}
-	std::cout<<"i am a client of type "<<nodeType<<std::endl;
-	std::cout<<"and i should watch the nodes:"<<std::endl;
+	std::cout << "i am a client of type " << nodeType << std::endl;
+	std::cout << "and i should watch the nodes:" << std::endl;
 	for (uint it = 0; it != elements.size(); it++)
 	{
-		std::cout<<elements[it]<<std::endl;
+		std::cout << elements[it] << std::endl;
 		zoo_exists(zk, elements[it], true, NULL);
 		discoverChildren(elements[it]);
 	}
