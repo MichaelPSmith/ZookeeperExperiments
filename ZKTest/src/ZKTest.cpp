@@ -22,10 +22,14 @@
 
 using namespace std;
 
+char* nodeType = "default";
+char* hosts = "localhost:2181";
+
 static zhandle_t *zk;
 static const clientid_t *session_id;
-char* nodeType = "default";
+
 struct String_vector list_of_children = { 0 };
+bool recoveryAttempted = false;
 int timeout = 3000;
 int responseCode = 0;
 std::mutex mutex_lock;
@@ -44,7 +48,6 @@ int main(int argc, char **argv)
 	 * checking to see if the host entered as the second argument is valid
 	 * if no host is entered the program will default to local host
 	 */
-	char* hosts = "localhost:2181";
 	char* check = "localhost";
 	char* check2 = ":";
 	if (argc > 1)
@@ -74,7 +77,9 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		//setting local host and port for testing of functionality in local machine only
 		hosts = "localhost:2181";
+
 	}
 
 	session_id = NULL;
@@ -164,7 +169,32 @@ static const char* type2String(int type)
 void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		void *watcherCtx)
 {
+	std::cout << type2String(type) << std::endl;
+	std::cout << state2String(state) << std::endl;
 	mutex_lock.unlock();
+
+//	if (zk == -4)
+//	{
+//		safeShutdown(zk);
+//		std::cout << state2String(type) << std::endl;
+//		zk = zookeeper_init(hosts, watcher, timeout, 0,
+//				NULL, 0);
+//		while (!zk)
+//		{
+//
+//		}
+//		char* p;
+//		p = strtok(NULL, " ");
+//		std::cout << "starting authentication" << std::endl;
+//
+//		zoo_add_auth(zk, "digest", p, p ? strlen(p) : 0, NULL, NULL);
+//		while (zoo_state(zk) == 0)
+//		{
+//
+//		}
+//
+//	}
+
 	if (type == ZOO_SESSION_EVENT)
 	{
 		std::cout << type2String(type) << std::endl;
@@ -203,7 +233,6 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 			}
 
 			session_id = zoo_client_id(zzh);
-			return;
 		}
 		else if (state == ZOO_AUTH_FAILED_STATE)
 		{
@@ -212,9 +241,90 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		}
 		else if (state == ZOO_EXPIRED_SESSION_STATE)
 		{
-			std::cout << state2String(type) << std::endl;
-			zk = zookeeper_init("localhost:2181", watcher, timeout, session_id,
+
+//			recoveryAttempted = true;
+			if (is_unrecoverable(zk) == ZINVALIDSTATE)
+			{
+				session_id = NULL;
+			}
+			zk = zookeeper_init(hosts, watcher, timeout, session_id,
 					NULL, 0);
+			while (!zk)
+			{
+
+			}
+			char* p;
+			p = strtok(NULL, " ");
+			std::cout << "starting authentication" << std::endl;
+
+			zoo_add_auth(zk, "digest", p, p ? strlen(p) : 0, NULL, NULL);
+			while (zoo_state(zk) == 0)
+			{
+
+			}stringstream ss;
+			string temp;
+			ss << nodeType;
+			ss >> temp;
+			string addition_of_strings = "/configTest/" + temp;
+			const char* config_to_watch = addition_of_strings.c_str();
+			std::cout << "setting watch for config type of " << config_to_watch
+					<< std::endl;
+
+			if (zoo_wexists(zk, config_to_watch, configurationwatcher, NULL, NULL)
+					== 0)
+			{
+				char config_data[1024] =
+				{ 0 };
+				int data_length = sizeof(config_data);
+				zoo_get(zk, config_to_watch, true, config_data, &data_length, NULL);
+				setConfiguration(config_data);
+			}
+		}
+		else if (state == ZOO_CONNECTING_STATE)
+		{
+			if(!recoveryAttempted)
+			{
+				recoveryAttempted = true;
+				if (is_unrecoverable(zk) == ZINVALIDSTATE)
+				{
+					session_id = NULL;
+				}
+				std::cout << "ping" << std::endl;
+				safeShutdown(zk);
+				zk = zookeeper_init(hosts, watcher, timeout, session_id,
+						NULL, 0);
+				while (!zk)
+				{
+
+				}
+				char* p;
+				p = strtok(NULL, " ");
+				std::cout << "starting authentication" << std::endl;
+
+				zoo_add_auth(zk, "digest", p, p ? strlen(p) : 0, NULL, NULL);
+				while (zoo_state(zk) == 0)
+				{
+
+				}stringstream ss;
+				string temp;
+				ss << nodeType;
+				ss >> temp;
+				string addition_of_strings = "/configTest/" + temp;
+				const char* config_to_watch = addition_of_strings.c_str();
+				std::cout << "setting watch for config type of " << config_to_watch
+						<< std::endl;
+
+//				if (zoo_wexists(zk, config_to_watch, configurationwatcher, NULL, NULL)
+//						== 0)
+//				{
+//					char config_data[1024] =
+//					{ 0 };
+//					int data_length = sizeof(config_data);
+//					zoo_get(zk, config_to_watch, true, config_data, &data_length, NULL);
+//					setConfiguration(config_data);
+//				}
+				recoveryAttempted = false;
+			}
 		}
 	}
 	else if (type == ZOO_DELETED_EVENT)
