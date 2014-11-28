@@ -173,28 +173,6 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 	std::cout << state2String(state) << std::endl;
 	mutex_lock.unlock();
 
-//	if (zk == -4)
-//	{
-//		safeShutdown(zk);
-//		std::cout << state2String(type) << std::endl;
-//		zk = zookeeper_init(hosts, watcher, timeout, 0,
-//				NULL, 0);
-//		while (!zk)
-//		{
-//
-//		}
-//		char* p;
-//		p = strtok(NULL, " ");
-//		std::cout << "starting authentication" << std::endl;
-//
-//		zoo_add_auth(zk, "digest", p, p ? strlen(p) : 0, NULL, NULL);
-//		while (zoo_state(zk) == 0)
-//		{
-//
-//		}
-//
-//	}
-
 	if (type == ZOO_SESSION_EVENT)
 	{
 		std::cout << type2String(type) << std::endl;
@@ -242,7 +220,6 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 		else if (state == ZOO_EXPIRED_SESSION_STATE)
 		{
 
-//			recoveryAttempted = true;
 			if (is_unrecoverable(zk) == ZINVALIDSTATE)
 			{
 				session_id = NULL;
@@ -314,15 +291,6 @@ void watcher(zhandle_t *zzh, int type, int state, const char *path,
 				std::cout << "setting watch for config type of " << config_to_watch
 						<< std::endl;
 
-//				if (zoo_wexists(zk, config_to_watch, configurationwatcher, NULL, NULL)
-//						== 0)
-//				{
-//					char config_data[1024] =
-//					{ 0 };
-//					int data_length = sizeof(config_data);
-//					zoo_get(zk, config_to_watch, true, config_data, &data_length, NULL);
-//					setConfiguration(config_data);
-//				}
 				recoveryAttempted = false;
 			}
 		}
